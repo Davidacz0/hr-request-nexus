@@ -12,6 +12,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import ProjectDetail from "./pages/ProjectDetail";
 import NotFound from "./pages/NotFound";
+import SurveyPage from "./pages/Survey";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +40,14 @@ const App = () => (
                   <ProjectDetail />
                 </ProtectedRoute>
               } 
+            />
+            <Route
+              path="/survey" 
+              element={
+                <ProtectedRoute>
+                  <SurveyPage />
+                </ProtectedRoute>
+              }
             />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="*" element={<NotFound />} />
