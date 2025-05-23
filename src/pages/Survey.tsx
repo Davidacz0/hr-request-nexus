@@ -1,12 +1,40 @@
 import { useEffect, useState, useCallback } from 'react';
 import Vapi from '@vapi-ai/web';
 import clsx from 'clsx';
+import { useParams } from 'react-router-dom';
+import { getProjectById, getQuestionsByProjectId } from '@/services/projectService';
 
 
 export default function SurveyPage() {
-    const [vapi] = useState(new Vapi(""));
+    const { email_id, project_id } = useParams(); // Extract path parameters
+    const [vapi] = useState(new Vapi("f71bdaa7-3eb4-4f71-bdd0-d4d33e2b2f44"));
     const [isCallActive, setIsCallActive] = useState(false);
-    // const [transcripts, setTranscripts] = useState([]);
+    const [project, setProject] = useState(null);
+    const [questionStringArray, setQuestionStringArray] = useState([]);
+    console.log("SurveyPage", email_id, project_id);
+
+    useEffect(() => {
+        const fetchProject = async () => {
+            try {
+                const fetchedProject = await getProjectById(project_id);
+                console.log("fetchedProject", fetchedProject);
+                setProject(fetchedProject);
+                const fetchedTopics = await getQuestionsByProjectId(project_id);
+                const questionsArray = fetchedTopics.map(topic => {
+                    return topic.questions.map(question => `${topic.title}: ${question.text}`);
+                }).flat();
+                setQuestionStringArray(questionsArray);
+                console.log("questionsArray", questionsArray);
+
+            } catch (error) {
+                console.error("Error fetching project:", error);
+            }
+        }
+        fetchProject();
+        console.log("Questions string array", questionStringArray);
+    }, [project_id]);
+
+
     const [error, setError] = useState('');
 
     const handleCallEvents = useCallback(() => {
@@ -16,12 +44,6 @@ export default function SurveyPage() {
         });
 
         vapi.on('call-end', () => setIsCallActive(false));
-
-        // vapi.on('message', (message) => {
-        //     if (message.type === 'transcript') {
-        //         setTranscripts(prev => [...prev, message.content]);
-        //     }
-        // });
 
         vapi.on('error', (err) => setError(err.message));
     }, [vapi]);
@@ -38,14 +60,14 @@ export default function SurveyPage() {
 
     const handleCallButtonClick = () => {
         if (isCallActive) {
-            vapi.say("Our time's up, goodbye!", true)
-
             vapi.stop();
             setIsCallActive(false);
         } else {
-            vapi.start("", {
+            vapi.start("4eb2c90f-f1de-430f-8719-600dbc4e186f", {
                 variableValues: {
-                    email: 'test@test.com',
+                    email_id: email_id,
+                    project_id: project_id,
+                    questions: questionStringArray
                 },
                 clientMessages: [],
                 serverMessages: []
@@ -95,7 +117,7 @@ export default function SurveyPage() {
                     </div>
 
                     <p className="text-center text-gray-500 text-sm">
-                        We'll ask you 5 questions about your experience. Please speak clearly.
+                        {`We'll ask you ${questionStringArray.length} questions about your experience. Please speak clearly.`}
                     </p>
                 </div>
             </div>

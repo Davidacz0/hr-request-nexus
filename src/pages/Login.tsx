@@ -20,7 +20,7 @@ const Login = () => {
     <div className="flex items-center justify-center min-h-screen bg-hr-light">
       <div className="w-full max-w-md px-4">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-hr-primary">HR Project Manager</h1>
+          <h1 className="text-3xl font-bold text-hr-primary">Survey Manager</h1>
           <p className="text-gray-600 mt-2">Sign in to your account</p>
         </div>
         
@@ -45,12 +45,6 @@ const Login = () => {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="password">Password</Label>
-                  <a
-                    href="#"
-                    className="text-xs text-hr-primary hover:underline"
-                  >
-                    Forgot password?
-                  </a>
                 </div>
                 <Input
                   id="password"

@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getProjects } from "@/services/projectService";
-import { Project } from "@/types/project";
+import { Project, Topic } from "@/types/project";
 import Header from "@/components/Header";
 import { Plus } from "lucide-react";
 import { format } from "date-fns";
@@ -21,13 +21,15 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createProject } from "@/services/projectService";
 import { toast } from "@/components/ui/sonner";
+import QuestionsForm from "@/components/QuestionsForm";
 
 const Dashboard = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [newProject, setNewProject] = useState({ name: "", description: "", status: "active" as const });
+  const [newProject, setNewProject] = useState({ name: "", description: "", status: "active" as const, topics: [] });
   const [isCreating, setIsCreating] = useState(false);
+  const [topics, setTopics] = useState<Topic[]>([]);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -49,11 +51,13 @@ const Dashboard = () => {
   const handleCreateProject = async () => {
     try {
       setIsCreating(true);
-      const project = await createProject(newProject);
+      // console.log("handleCreateProject", newProject, questions);
+      // setNewProject({ ...newProject, questions });
+      const project = await createProject({ ...newProject, topics });
       setProjects([...projects, project]);
       setDialogOpen(false);
       toast.success("Project created successfully");
-      setNewProject({ name: "", description: "", status: "active" as const });
+      setNewProject({ name: "", description: "", status: "active" as const, topics: [] });
     } catch (error) {
       console.error("Error creating project:", error);
       toast.error("Failed to create project");
@@ -63,6 +67,7 @@ const Dashboard = () => {
   };
 
   const getStatusColor = (status: Project["status"]) => {
+    console.log("getStatusColor", status);
     switch (status) {
       case "active":
         return "bg-green-100 text-green-800";
@@ -80,13 +85,13 @@ const Dashboard = () => {
       <Header />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Projects Dashboard</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Surveys Dashboard</h1>
           <Button
             onClick={() => setDialogOpen(true)}
             className="bg-hr-primary hover:bg-hr-secondary"
           >
             <Plus className="mr-2 h-4 w-4" />
-            New Project
+            New Survey
           </Button>
         </div>
 
@@ -154,21 +159,21 @@ const Dashboard = () => {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create New Project</DialogTitle>
+            <DialogTitle>Create New Survey</DialogTitle>
             <DialogDescription>
-              Fill in the details to create a new project.
+              Fill in the details to create a new survey.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 py-2 overflow-y-auto max-h-[calc(100vh-14rem)]">
             <div className="space-y-2">
-              <Label htmlFor="name">Project Name</Label>
+              <Label htmlFor="name">Survery Name</Label>
               <Input
                 id="name"
                 value={newProject.name}
                 onChange={(e) =>
                   setNewProject({ ...newProject, name: e.target.value })
                 }
-                placeholder="Enter project name"
+                placeholder="Enter survey name"
               />
             </div>
             <div className="space-y-2">
@@ -183,6 +188,14 @@ const Dashboard = () => {
                 rows={3}
               />
             </div>
+            <QuestionsForm
+              defaultTopics={topics}
+              onSubmit={(topics) => {
+                setTopics(topics);
+              }}
+              showSaveButton={false}
+            />
+
           </div>
           <DialogFooter>
             <Button

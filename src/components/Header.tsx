@@ -20,7 +20,7 @@ const Header = () => {
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center">
             <a href="/dashboard" className="flex-shrink-0">
-              <span className="text-hr-primary font-bold text-xl">HR Project Manager</span>
+              <span className="text-hr-primary font-bold text-xl">Survey Manager</span>
             </a>
           </div>
           <div className="flex items-center">

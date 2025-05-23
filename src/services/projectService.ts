@@ -1,145 +1,240 @@
+import supabase from "@/api/supabaseClient";
+import { Project, Email, Question, Topic } from "@/types/project";
+import { sendSurveyEmail } from "./emailService";
 
-import { Project } from "@/types/project";
+const getEmailsForProject = async (projectId: string): Promise<Email[]> => {
+  const { data, error } = await supabase
+    .from("projects_emails")
+    .select(`
+      status,
+      emails:emails (
+        id,
+        email,
+        name,
+        position,
+        dateCreated
+      )
+    `)
+    .eq("project_id", projectId);
+  console.log("getEmailsForProject", data, error);
+  return (data ?? []).flatMap(item => {
+    return ({
+      id: item.emails.id,
+      email: item.emails.email,
+      name: item.emails.name,
+      position: item.emails.position,
+      dateCreated: item.emails.dateCreated,
+      status: item.status,
+    })
+  }
+  )
+}
 
-// Mock project data
-const mockProjects: Project[] = [
-  {
-    id: "1",
-    name: "New Employee Onboarding",
-    description: "Onboarding process for new hires in Q2 2025",
-    dateCreated: new Date("2025-05-01"),
-    status: "active",
-    emails: [
-      { 
-        id: "1", 
-        email: "john.doe@example.com", 
-        name: "John Doe", 
-        position: "Software Engineer",
-        dateAdded: new Date("2025-05-02"), 
-        status: "sent" 
-      },
-      { 
-        id: "2", 
-        email: "jane.smith@example.com", 
-        name: "Jane Smith", 
-        position: "Product Manager",
-        dateAdded: new Date("2025-05-03"),
-        status: "pending" 
-      },
-    ],
-  },
-  {
-    id: "2",
-    name: "Quarterly Performance Reviews",
-    description: "Q2 2025 performance review process",
-    dateCreated: new Date("2025-04-15"),
-    status: "active",
-    emails: [
-      { 
-        id: "3", 
-        email: "manager@example.com", 
-        name: "Team Manager", 
-        position: "Department Manager",
-        dateAdded: new Date("2025-04-16"),
-        status: "sent" 
-      }
-    ],
-  },
-];
+export const getQuestionsByProjectId = async (projectId: string) => {
+  const { data, error } = await supabase
+    .from("questions")
+    .select("*")
+    .eq("project_id", projectId);
+  if (error) throw error;
+  console.log("getQuestionsByProjectId", data);
+  const groupedTopic = regroupQuestions(data);
+  return groupedTopic;
+}
 
-// Get all projects
+// Get all projects (with emails)
 export const getProjects = async (): Promise<Project[]> => {
-  // In a real application, you would make an API call here
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve(mockProjects);
-    }, 500);
-  });
+  const { data: projects, error } = await supabase
+    .from("projects")
+    .select("*")
+    .order("dateCreated", { ascending: false });
+
+  if (error) throw error;
+
+  // Fetch emails for each project
+  const projectsWithEmails: Project[] = await Promise.all(
+    (projects ?? []).map(async (project) => ({
+      ...project,
+      emails: await getEmailsForProject(project.id),
+    }))
+  );
+
+  return projectsWithEmails;
 };
 
-// Get project by ID
+// Get project by ID (with emails)
 export const getProjectById = async (id: string): Promise<Project | null> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const project = mockProjects.find((p) => p.id === id);
-      resolve(project || null);
-    }, 300);
-  });
+  const { data: project, error } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("id", id)
+    .single();
+  if (error || !project) return null;
+  console.log("getProjectById", project);
+  const emails = await getEmailsForProject(project.id);
+  return { ...project, emails };
 };
 
 // Create a new project
 export const createProject = async (
   project: Omit<Project, "id" | "dateCreated" | "emails">
 ): Promise<Project> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const newProject: Project = {
-        ...project,
-        id: `${mockProjects.length + 1}`,
-        dateCreated: new Date(),
-        emails: [],
-      };
-      mockProjects.push(newProject);
-      resolve(newProject);
-    }, 500);
-  });
+  console.log("CReating project ", project);
+  const { data, error } = await supabase
+    .from("projects")
+    .insert([
+      {
+        name: project.name,
+        description: project.description,
+        status: "active",
+        dateCreated: new Date().toISOString(),
+      },
+    ])
+    .select()
+    .single();
+  if (error) throw error;
+  // upload quesitons to question table
+  const questionsToSave = project.topics.flatMap((topic) =>
+    topic.questions.map((question) => ({
+      id: question.id,
+      text: question.text,
+      project_id: data.id,
+      topic: topic.title
+
+    }))
+  );
+
+  console.log("questionsToSave", questionsToSave);
+
+  const { error: questionError } = await supabase
+    .from("questions")
+    .insert(
+      questionsToSave.map((question) => ({
+        id: question.id,
+        text: question.text,
+        project_id: data.id,
+        topic: question.topic
+      }))
+    );
+  // createQuestionsToProject(data.id, project.questions);
+  if (questionError) throw questionError;
+
+  return { ...data, emails: [] };
 };
 
-// Add email to project
+export const createQuestionsToProject = async (
+  projectId: string,
+  questions: { id: number, text: string }[]
+) => {
+
+  const { error } = await supabase
+    .from("questions")
+    .upsert(
+      questions.map((question) => ({
+        id: question.id,
+        text: question.text,
+        project_id: projectId,
+      }),
+        {
+          onConflict: ["id", "project_id"], // Match composite key
+          ignoreDuplicates: false // Set to true if you want to skip duplicates
+        }
+      )
+    );
+  if (error) throw error;
+}
+
+// Add email to project (creates email, then join)
 export const addEmailToProject = async (
   projectId: string,
   email: string,
   name?: string,
   position?: string
 ): Promise<Project | null> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const project = mockProjects.find((p) => p.id === projectId);
-      if (project) {
-        const newEmail = {
-          id: `${project.emails.length + 1}`,
-          email,
-          name,
-          position,
-          dateAdded: new Date(),
-          status: "pending" as const,
-        };
-        project.emails.push(newEmail);
-        resolve(project);
-      } else {
-        resolve(null);
-      }
-    }, 300);
-  });
+  const { data: emailData, error: emailError } = await supabase
+    .from("emails")
+    .insert([
+      {
+        email,
+        name,
+        position,
+        dateCreated: new Date().toISOString(),
+      },
+    ])
+    .select()
+    .single();
+
+  if (emailError) throw emailError;
+
+  // 2. Link email to project in join table
+  const { error: joinError } = await supabase
+    .from("projects_emails")
+    .insert([
+      {
+        project_id: projectId,
+        email_id: emailData.id,
+        status: "not_sent",
+      },
+    ]);
+
+  if (joinError) throw joinError;
+
+  // 3. Return updated project
+  return await getProjectById(projectId);
 };
 
-// Send request to n8n for a specific email in a project
-export const sendN8nRequest = async (
+export const updateEmailStatus = async (
   projectId: string,
   emailId: string,
-  webhookUrl: string
+  status: "pending" | "sent" | "failed"
 ): Promise<boolean> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      // Find project and email
-      const project = mockProjects.find((p) => p.id === projectId);
-      if (!project) {
-        resolve(false);
-        return;
-      }
+  const { error } = await supabase
+    .from("projects_emails")
+    .update({ status })
+    .eq("project_id", projectId)
+    .eq("email_id", emailId);
+  return !error;
+}
 
-      const email = project.emails.find((e) => e.id === emailId);
-      if (!email) {
-        resolve(false);
-        return;
-      }
+export const sendEmail = async (
+  projectId: string,
+  emailId: string,
+  emailAddress: string,
+  subject: string,
+  body: string
+): Promise<boolean> => {
+  // Simulate sending email
+  const project = await getProjectById(projectId);
 
-      // In a real application, you would make an API call to the n8n webhook
-      console.log(`Sending request to n8n webhook ${webhookUrl} for email ${email.email}`);
-      
-      // Update email status
-      email.status = "sent";
-      resolve(true);
-    }, 800);
-  });
-};
+  const success = await sendSurveyEmail(emailAddress, projectId, emailId, project.name);
+
+  if (success) {
+    await updateEmailStatus(projectId, emailId, "sent");
+    return true;
+  } else {
+    await updateEmailStatus(projectId, emailId, "failed");
+    return false;
+  }
+}
+
+
+function regroupQuestions(questions: { id: number, text: string, project_id: number, topic: string }[]): Topic[] {
+  const topicMap: Record<string, Question[]> = {};
+  for (const q of questions) {
+    if (!topicMap[q.topic]) {
+      topicMap[q.topic] = [];
+    }
+    topicMap[q.topic].push({ id: q.id, text: q.text });
+  }
+
+  const topics: Topic[] = [];
+  let topicId = 1;
+  for (const [title, qs] of Object.entries(topicMap)) {
+    topics.push({
+      id: topicId,
+      title,
+      questions: qs,
+    });
+    topicId++;
+  }
+  return topics;
+}

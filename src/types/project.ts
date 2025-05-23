@@ -4,8 +4,8 @@ export interface Email {
   email: string;
   name?: string;
   position?: string;
-  dateAdded: Date;
-  status?: 'pending' | 'sent' | 'failed';
+  dateCreated: Date;
+  status?: 'sent' | 'failed' | 'not_sent' | 'done';
 }
 
 export interface Project {
@@ -15,4 +15,16 @@ export interface Project {
   dateCreated: Date;
   status: 'active' | 'completed' | 'archived';
   emails: Email[];
+  topics: Topic[];
 }
+
+export type Question = {
+  id: number;
+  text: string;
+};
+
+export type Topic = {
+  id: number;
+  title: string;
+  questions: Question[];
+};

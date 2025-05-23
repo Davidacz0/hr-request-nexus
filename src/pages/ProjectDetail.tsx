@@ -17,10 +17,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { addEmailToProject, getProjectById, sendN8nRequest } from "@/services/projectService";
+import { addEmailToProject, createQuestionsToProject, getProjectById, getQuestionsByProjectId, sendEmail, updateEmailStatus } from "@/services/projectService";
 import { Project, Email } from "@/types/project";
 import Header from "@/components/Header";
-import { ArrowLeft, Plus, Mail } from "lucide-react";
+import { ArrowLeft, Plus, Mail, ShieldQuestion, MessageCircleQuestion, FileQuestion } from "lucide-react";
 import { format } from "date-fns";
 import {
   Dialog,
@@ -39,6 +39,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import QuestionsForm from "@/components/QuestionsForm";
+import axios from 'axios';
 
 const ProjectDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -46,6 +48,7 @@ const ProjectDetail = () => {
   const [project, setProject] = useState<Project | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [questionsDialogOpen, setQuestionsDialogOpen] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [newEmail, setNewEmail] = useState({
@@ -60,9 +63,10 @@ const ProjectDetail = () => {
   useEffect(() => {
     const loadProject = async () => {
       if (!id) return;
-      
+
       try {
         const data = await getProjectById(id);
+        // await updateEmailStatus(id, "1", "sent");
         setProject(data);
       } catch (error) {
         console.error("Error loading project:", error);
@@ -77,7 +81,7 @@ const ProjectDetail = () => {
 
   const handleAddEmail = async () => {
     if (!id || !project) return;
-    
+
     try {
       setIsSaving(true);
       const updatedProject = await addEmailToProject(
@@ -86,7 +90,7 @@ const ProjectDetail = () => {
         newEmail.name,
         newEmail.position
       );
-      
+
       if (updatedProject) {
         setProject(updatedProject);
         setDialogOpen(false);
@@ -105,51 +109,55 @@ const ProjectDetail = () => {
 
   const handleSendRequest = async () => {
     if (!id || !project || !selectedEmail) return;
-    
+
     try {
       setIsSending(true);
-      const success = await sendN8nRequest(
-        id,
+
+      const success = await sendEmail(
+        project.id,
         selectedEmail.id,
-        webhookUrl
+        selectedEmail.email,
+        webhookUrl,
+        "email"
       );
-      
       if (success) {
-        // Update the email status locally
-        const updatedEmails = project.emails.map(email => 
-          email.id === selectedEmail.id 
-            ? { ...email, status: 'sent' as const } 
+        const updatedEmails = project.emails.map(email =>
+          email.id === selectedEmail.id
+            ? { ...email, status: 'sent' as const }
             : email
         );
-        
+
         setProject({
           ...project,
           emails: updatedEmails
         });
-        
+
         setEmailDialogOpen(false);
         setSelectedEmail(null);
-        toast.success("Request sent to n8n successfully");
+        toast.success(`Request sent to ${selectedEmail.email}`);
       } else {
         toast.error("Failed to send request");
       }
     } catch (error) {
       console.error("Error sending request:", error);
-      toast.error("Failed to send request to n8n");
+      toast.error(`Failed to send request to ${selectedEmail.email}`);
     } finally {
       setIsSending(false);
     }
   };
 
   const getStatusBadge = (status?: Email["status"]) => {
+    console.log("getStatusBadge", status);
     switch (status) {
+      case "not_sent":
+        return <span className="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded-full">Not Sent</span>;
       case "sent":
         return <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Sent</span>;
       case "failed":
         return <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">Failed</span>;
-      case "pending":
+      case "done":
       default:
-        return <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full">Pending</span>;
+        return <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full">Done</span>;
     }
   };
 
@@ -179,13 +187,12 @@ const ProjectDetail = () => {
                   Created {format(new Date(project.dateCreated), "MMMM d, yyyy")}
                 </p>
                 <span
-                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                    project.status === "active"
-                      ? "bg-green-100 text-green-800"
-                      : project.status === "completed"
+                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${project.status === "active"
+                    ? "bg-green-100 text-green-800"
+                    : project.status === "completed"
                       ? "bg-blue-100 text-blue-800"
                       : "bg-gray-100 text-gray-800"
-                  }`}
+                    }`}
                 >
                   {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
                 </span>
@@ -193,10 +200,45 @@ const ProjectDetail = () => {
               <p className="mt-4 text-gray-600">{project.description}</p>
             </div>
 
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold text-gray-900">Email List</h2>
+            <div className="flex justify-end gap-x-4 items-center mb-6">
               <Button
-                onClick={() => setDialogOpen(true)}
+                onClick={async () => {
+                  try {
+
+                    const response = await axios.get('https://nexus-agent.app.n8n.cloud/webhook/d4854b75-2e3c-43aa-9ebf-409232805bc2');
+                    console.log('Webhook sent:', response.data);
+                    alert('Webhook sent successfully!');
+                  } catch (error) {
+                    console.error('Error:', error);
+                    alert('Failed to send webhook!');
+                  } finally {
+                  }
+                }}
+                className="bg-hr-primary hover:bg-hr-secondary"
+              >
+                <Mail className="mr-2 h-4 w-4" />
+                Summarize Survey Results
+              </Button>
+              <Button
+                onClick={async () => {
+
+                  const topicsFetched = await getQuestionsByProjectId(project.id);
+                  console.log("Topics fetched", topicsFetched);
+                  setProject({
+                    ...project,
+                    topics: topicsFetched
+                  });
+                  setQuestionsDialogOpen(true)
+                }}
+                className="bg-hr-primary hover:bg-hr-secondary"
+              >
+                <FileQuestion className="mr-2 h-4 w-4" />
+                Check Questions
+              </Button>
+              <Button
+                onClick={() => {
+                  setDialogOpen(true)
+                }}
                 className="bg-hr-primary hover:bg-hr-secondary"
               >
                 <Plus className="mr-2 h-4 w-4" />
@@ -236,7 +278,7 @@ const ProjectDetail = () => {
                           <TableCell>{email.name || "-"}</TableCell>
                           <TableCell>{email.position || "-"}</TableCell>
                           <TableCell>
-                            {format(new Date(email.dateAdded), "MMM d, yyyy")}
+                            {format(new Date(email.dateCreated), "MMM d, yyyy")}
                           </TableCell>
                           <TableCell>{getStatusBadge(email.status)}</TableCell>
                           <TableCell className="text-right">
@@ -251,13 +293,13 @@ const ProjectDetail = () => {
                                       setSelectedEmail(email);
                                       setEmailDialogOpen(true);
                                     }}
-                                    disabled={email.status === "sent"}
+                                  // disabled={email.status === "sent"}
                                   >
                                     <Mail className="h-4 w-4" />
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  <p>Send request to n8n</p>
+                                  <p>Send survey link</p>
                                 </TooltipContent>
                               </Tooltip>
                             </TooltipProvider>
@@ -355,36 +397,40 @@ const ProjectDetail = () => {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={questionsDialogOpen} onOpenChange={setQuestionsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Survey Questions</DialogTitle>
+            <DialogDescription>
+              Here are the questions for this project.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2 overflow-y-auto max-h-[calc(100vh-14rem)]">
+
+            <QuestionsForm
+              defaultTopics={project?.topics || []}
+              onSubmit={async (questions) => {
+                console.log("Creating questions", questions);
+                // createQuestionsToProject(project?.id, questions);
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setQuestionsDialogOpen(false)}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Send Request to n8n</DialogTitle>
-            <DialogDescription>
-              Enter your n8n webhook URL to send a request for this email.
-            </DialogDescription>
+            <DialogTitle>Send survey link to {selectedEmail?.email}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                value={selectedEmail?.email || ""}
-                disabled
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="webhook">n8n Webhook URL *</Label>
-              <Input
-                id="webhook"
-                value={webhookUrl}
-                onChange={(e) => setWebhookUrl(e.target.value)}
-                placeholder="https://your-n8n-instance.com/webhook/..."
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Enter the webhook URL from your n8n instance
-              </p>
-            </div>
-          </div>
           <DialogFooter>
             <Button
               variant="outline"
@@ -396,7 +442,7 @@ const ProjectDetail = () => {
             <Button
               onClick={handleSendRequest}
               className="bg-hr-primary hover:bg-hr-secondary"
-              disabled={!webhookUrl || isSending}
+              disabled={isSending}
             >
               {isSending ? (
                 <div className="flex items-center">

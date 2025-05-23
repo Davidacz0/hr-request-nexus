@@ -42,7 +42,7 @@ const App = () => (
               } 
             />
             <Route
-              path="/survey" 
+              path="/survey/:project_id/:email_id"
               element={
                 <ProtectedRoute>
                   <SurveyPage />
